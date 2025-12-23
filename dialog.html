@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>Confirm Send</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            margin: 0;
+        }
+        .warning {
+            background-color: #fff4e5;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .warning-title {
+            font-weight: bold;
+            color: #e65100;
+            margin-bottom: 10px;
+        }
+        .domains {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .buttons {
+            text-align: right;
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin-left: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-yes {
+            background-color: #0078d4;
+            color: white;
+        }
+        .btn-yes:hover {
+            background-color: #005a9e;
+        }
+        .btn-no {
+            background-color: #d13438;
+            color: white;
+        }
+        .btn-no:hover {
+            background-color: #a52528;
+        }
+    </style>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <script>
+        Office.onReady(() => {
+            // Get message from URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const message = urlParams.get('message');
+            
+            if (message) {
+                document.getElementById('message').textContent = decodeURIComponent(message);
+            }
+        });
+
+        function sendMessage(response) {
+            Office.context.ui.messageParent(response);
+        }
+    </script>
+</head>
+<body>
+    <div class="warning">
+        <div class="warning-title">⚠️ WARNING: External Recipients Detected</div>
+        <div id="message"></div>
+    </div>
+    <div class="buttons">
+        <button class="btn-no" onclick="sendMessage('no')">Cancel Send</button>
+        <button class="btn-yes" onclick="sendMessage('yes')">Send Anyway</button>
+    </div>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+  xsi:type="MailApp">
+
+  <!-- Basic Add-in Information -->
+  <Id>317cd7a3-5bcf-440f-b232-b3a054732551</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Clearview Horticulture</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="External Domain Warning"/>
+  <Description DefaultValue="Warns when sending emails to multiple external domains"/>
+
+<!--   <IconUrl DefaultValue="https://www.clearviewhort.com/assets/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="https://www.clearviewhort.com/assets/icon-128.png"/>
+  <SupportUrl DefaultValue="https://www.clearviewhort.com/support"/> 
+-->
+
+  <!-- Hosts: Specifies which Office apps this works with -->
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+
+  <!-- Requirements: Minimum version needed -->
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.10"/>
+    </Sets>
+  </Requirements>
+
+  <!-- Form Settings -->
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://clvw.sharepoint.com/sites/ClearviewProducts/Shared%20Documents/Bruce/OutLookAddInFiles/commands.html"/>
+        <RequestedHeight>250</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+
+
+  <!-- Permissions -->
+  <Permissions>ReadWriteItem</Permissions>
+
+  <!-- This is where the ItemSend event is configured -->
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
+  </Rule>
+
+  <!-- Version Overrides: Modern add-in configuration -->
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      
+      <!-- Requirements -->
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.10">
+          <bt:Set Name="Mailbox"/>
+        </bt:Sets>
+      </Requirements>
+
+      <Hosts>
+        <Host xsi:type="MailHost">
+          
+          <!-- Runtime Configuration -->
+          <Runtimes>
+            <Runtime resid="WebViewRuntime.Url">
+              <Override type="javascript" resid="JSRuntime.Url"/>
+            </Runtime>
+          </Runtimes>
+
+          <DesktopFormFactor>
+            <!-- Function File (where your JavaScript lives) -->
+            <FunctionFile resid="Commands.Url"/>
+
+            <!-- Extension Point: ItemSend Event -->
+            <ExtensionPoint xsi:type="Events">
+              <Event Type="ItemSend" FunctionExecution="synchronous" FunctionName="checkRecipientsBeforeSend"/>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+
+        </Host>
+      </Hosts>
+
+      <!-- Resources: URLs and strings -->
+      <Resources>
+<!--         <bt:Images>
+          <bt:Image id="Icon.16x16" DefaultValue="https://www.clearviewhort.com/assets/icon-16.png"/>
+          <bt:Image id="Icon.32x32" DefaultValue="https://www.clearviewhort.com/assets/icon-32.png"/>
+          <bt:Image id="Icon.80x80" DefaultValue="https://www.clearviewhort.com/assets/icon-80.png"/>
+        </bt:Images> 
+-->
+        <bt:Urls>
+          <bt:Url id="Commands.Url" DefaultValue="https://clvw.sharepoint.com/sites/ClearviewProducts/Shared%20Documents/Bruce/OutLookAddInFiles/commands.html"/>
+          <bt:Url id="WebViewRuntime.Url" DefaultValue="https://clvw.sharepoint.com/sites/ClearviewProducts/Shared%20Documents/Bruce/OutLookAddInFiles/commands.html"/>
+          <bt:Url id="JSRuntime.Url" DefaultValue="https://clvw.sharepoint.com/sites/ClearviewProducts/Shared%20Documents/Bruce/OutLookAddInFiles/commands.html"/>
+        </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="GroupLabel" DefaultValue="External Domain Tools"/>
+          <bt:String id="TaskpaneButton.Label" DefaultValue="Check Recipients"/>
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Check email recipients for external domains"/>
+        </bt:LongStrings>
+      </Resources>
+
+    </VersionOverrides>
+  </VersionOverrides>
+
+</OfficeApp>
