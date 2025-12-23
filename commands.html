@@ -101,7 +101,7 @@ function getRecipientsAsync(recipientField) {
 function showConfirmDialog(message) {
   return new Promise((resolve) => {
     Office.context.ui.displayDialogAsync(
-      `https://clvw.sharepoint.com/sites/ClearviewProducts/Shared%20Documents/Bruce/OutLookAddInFiles/dialog.html?message=${encodeURIComponent(message)}`,
+      `https://byclevw.github.io/outlookaddin/dialog.html?message=${encodeURIComponent(message)}`,
       { height: 30, width: 40 },
       (result) => {
         if (result.status === Office.AsyncResultStatus.Succeeded) {
@@ -130,4 +130,5 @@ Office.actions.associate("checkRecipientsBeforeSend", checkRecipientsBeforeSend)
         <p>External Domain Warning add-in is running...</p>
     </div>
 </body>
+
 </html>
