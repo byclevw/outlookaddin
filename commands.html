@@ -3,132 +3,98 @@
 <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
-    <title>External Domain Warning</title>
-    
-    <!-- Office.js library - Microsoft provides this -->
     <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-    
-    <!-- Your custom JavaScript -->
-    <script">
+    <script>
+        Office.onReady(() => {
+            console.log("Add-in initialized");
+        });
 
-// manifest.xml configuration needed:
-// <Event Type="ItemSend" FunctionExecution="synchronous" FunctionName="checkRecipientsBeforeSend" />
-
-Office.onReady(() => {
-  console.log("External Domain Warning add-in loaded");
-});
-
-async function checkRecipientsBeforeSend(event) {
-  try {
-    const item = Office.context.mailbox.item;
-    const internalDomain = "clearviewhort.com";
-    const externalDomains = new Set();
-    
-    // Get all recipients (To, CC, BCC)
-    const toRecipients = await getRecipientsAsync(item.to);
-    const ccRecipients = await getRecipientsAsync(item.cc);
-    const bccRecipients = await getRecipientsAsync(item.bcc);
-    
-    const allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients];
-    
-    let debugInfo = "DEBUG - Detected Recipients:\n\n";
-    
-    // Process each recipient
-    for (const recipient of allRecipients) {
-      const email = recipient.emailAddress.toLowerCase().trim();
-      debugInfo += `Name: ${recipient.displayName}\nEmail: ${email}\n\n`;
-      
-      // Extract domain
-      if (email.includes("@")) {
-        const domain = email.split("@")[1];
-        
-        // Check if external
-        if (domain !== internalDomain) {
-          externalDomains.add(domain);
+        // This handles the Ribbon Button click
+        function action(event) {
+            console.log("Manual check triggered");
+            // You can put manual check logic here
+            event.completed(); 
         }
-      }
-    }
-    
-    // Debug: Show all recipients (optional - comment out in production)
-    // console.log(debugInfo);
-    
-    // Check for multiple external domains
-    if (externalDomains.size >= 2) {
-      const domainList = Array.from(externalDomains).join(", ");
-      const message = {
-        type: Office.MailboxEnums.ItemNotificationMessageType.InformationalMessage,
-        message: `WARNING: Sending to multiple EXTERNAL domains: ${domainList}`,
-        icon: "Icon.80x80",
-        persistent: false
-      };
-      
-      // Show warning
-      const userConfirmed = await showConfirmDialog(
-        `WARNING: You are sending this email to multiple EXTERNAL domains:\n${domainList}\n\nAre you sure you want to send?`
-      );
-      
-      if (!userConfirmed) {
-        // Cancel send
-        event.completed({ allowEvent: false });
-        return;
-      }
-    }
-    
-    // Allow send
-    event.completed({ allowEvent: true });
-    
-  } catch (error) {
-    console.error("Error checking recipients:", error);
-    // Allow send on error to avoid blocking legitimate emails
-    event.completed({ allowEvent: true });
-  }
-}
 
-// Helper function to get recipients
-function getRecipientsAsync(recipientField) {
-  return new Promise((resolve, reject) => {
-    recipientField.getAsync((result) => {
-      if (result.status === Office.AsyncResultStatus.Succeeded) {
-        resolve(result.value || []);
-      } else {
-        reject(result.error);
-      }
-    });
-  });
-}
+        // This handles the actual Send event
+        async function checkRecipientsBeforeSend(event) {
+            try {
+                const item = Office.context.mailbox.item;
+                const internalDomain = "clearviewhort.com";
+                const externalDomains = new Set();
 
-// Helper function to show confirmation dialog
-function showConfirmDialog(message) {
-  return new Promise((resolve) => {
-    Office.context.ui.displayDialogAsync(
-      `https://byclevw.github.io/outlookaddin/dialog.html?message=${encodeURIComponent(message)}`,
-      { height: 30, width: 40 },
-      (result) => {
-        if (result.status === Office.AsyncResultStatus.Succeeded) {
-          const dialog = result.value;
-          dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
-            dialog.close();
-            resolve(arg.message === "yes");
-          });
-        } else {
-          // Fallback: allow send if dialog fails
-          resolve(true);
+                // Get Recipients
+                const toRecipients = await getRecipientsAsync(item.to);
+                const ccRecipients = await getRecipientsAsync(item.cc);
+                const bccRecipients = await getRecipientsAsync(item.bcc);
+                const allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients];
+
+                for (const recipient of allRecipients) {
+                    const email = (recipient.emailAddress || "").toLowerCase().trim();
+                    if (email.includes("@")) {
+                        const domain = email.split("@")[1];
+                        if (domain !== internalDomain) {
+                            externalDomains.add(domain);
+                        }
+                    }
+                }
+
+                if (externalDomains.size >= 2) {
+                    const domainList = Array.from(externalDomains).join(", ");
+                    const userConfirmed = await showConfirmDialog(domainList);
+                    
+                    if (!userConfirmed) {
+                        event.completed({ allowEvent: false });
+                        return;
+                    }
+                }
+
+                // SUCCESS: Tell Outlook it is okay to send
+                event.completed({ allowEvent: true });
+
+            } catch (error) {
+                console.error("Error:", error);
+                // Safety: Allow send if the code crashes
+                event.completed({ allowEvent: true });
+            }
         }
-      }
-    );
-  });
-}
 
-// Register the function
-Office.actions.associate("checkRecipientsBeforeSend", checkRecipientsBeforeSend);
+        function getRecipientsAsync(recipientField) {
+            return new Promise((resolve) => {
+                recipientField.getAsync((result) => {
+                    resolve(result.status === Office.AsyncResultStatus.Succeeded ? result.value : []);
+                });
+            });
+        }
 
+        function showConfirmDialog(domainList) {
+            return new Promise((resolve) => {
+                const message = `Multiple external domains detected: ${domainList}. Send anyway?`;
+                const url = `https://byclevw.github.io/outlookaddin/dialog.html?message=${encodeURIComponent(message)}`;
+                
+                Office.context.ui.displayDialogAsync(url, { height: 30, width: 40 }, (result) => {
+                    if (result.status === Office.AsyncResultStatus.Succeeded) {
+                        const dialog = result.value;
+                        dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
+                            dialog.close();
+                            resolve(arg.message === "yes");
+                        });
+                        dialog.addEventHandler(Office.EventType.DialogEventReceived, () => {
+                            resolve(true); // User closed X, allow send by default
+                        });
+                    } else {
+                        resolve(true); // Dialog failed to open, don't block user
+                    }
+                });
+            });
+        }
+
+        // Mapping function names in manifest to JS functions
+        Office.actions.associate("checkRecipientsBeforeSend", checkRecipientsBeforeSend);
+        Office.actions.associate("action", action);
     </script>
 </head>
 <body>
-    <!-- This page just loads the JavaScript - no visible UI needed -->
-    <div id="container">
-        <p>External Domain Warning add-in is running...</p>
-    </div>
+    <p>External Domain Warning Working...</p>
 </body>
-
 </html>
