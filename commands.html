@@ -89,8 +89,21 @@
             });
         }
 
+        function action(event) {
+            // This is called when the user clicks the "Add-in Status" button
+            const message = {
+                type: Office.MailboxEnums.ItemNotificationMessageType.InformationalMessage,
+                message: "External Domain Warning is active and checking your emails.",
+                icon: "Icon.80x80",
+                persistent: false
+            };
+            Office.context.mailbox.item.notificationMessages.replaceAsync("status", message);
+            event.completed();
+        }        
+
         // Mapping function names in manifest to JS functions
         Office.actions.associate("checkRecipientsBeforeSend", checkRecipientsBeforeSend);
+        Office.actions.associate("action", action);
 
     </script>
 </head>
