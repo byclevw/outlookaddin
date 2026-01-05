@@ -1,113 +1,207 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
-    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
-    <script>
-        Office.onReady(() => {
-            console.log("Add-in initialized");
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+
+  <script>
+    Office.onReady(() => {
+      console.log("External Domain Warning initialized");
+    });
+
+    const INTERNAL_DOMAIN = "clearviewhort.com";
+    const CONFIRM_KEY = "externalConfirmed";
+
+    /* =========================================================
+       STEP 1 — RIBBON BUTTON (INTERACTIVE, USER CONFIRMATION)
+       ========================================================= */
+    function action(event) {
+      const item = Office.context.mailbox.item;
+      const externalDomains = new Set();
+
+      Promise.all([
+        getRecipients(item.to),
+        getRecipients(item.cc),
+        getRecipients(item.bcc)
+      ]).then(results => {
+        results.flat().forEach(r => {
+          const email = (r.emailAddress || "").toLowerCase();
+          if (email.includes("@")) {
+            const domain = email.split("@")[1];
+            if (domain !== INTERNAL_DOMAIN) {
+              externalDomains.add(domain);
+            }
+          }
         });
 
-        // This handles the Ribbon Button click
-        function action(event) {
-            console.log("Manual check triggered");
-            // You can put manual check logic here
-            event.completed(); 
-        }
-
-        // This handles the actual Send event
-        async function checkRecipientsBeforeSend(event) {
-            try {
-                const item = Office.context.mailbox.item;
-                const internalDomain = "clearviewhort.com";
-                const externalDomains = new Set();
-
-                // Get Recipients
-                const toRecipients = await getRecipientsAsync(item.to);
-                const ccRecipients = await getRecipientsAsync(item.cc);
-                const bccRecipients = await getRecipientsAsync(item.bcc);
-                const allRecipients = [...toRecipients, ...ccRecipients, ...bccRecipients];
-
-                for (const recipient of allRecipients) {
-                    const email = (recipient.emailAddress || "").toLowerCase().trim();
-                    if (email.includes("@")) {
-                        const domain = email.split("@")[1];
-                        if (domain !== internalDomain) {
-                            externalDomains.add(domain);
-                        }
-                    }
-                }
-
-                if (externalDomains.size >= 2) {
-                    const domainList = Array.from(externalDomains).join(", ");
-                    const userConfirmed = await showConfirmDialog(domainList);
-                    
-                    if (!userConfirmed) {
-                        event.completed({ allowEvent: false });
-                        return;
-                    }
-                }
-
-                // SUCCESS: Tell Outlook it is okay to send
-                event.completed({ allowEvent: true });
-
-            } catch (error) {
-                console.error("Error:", error);
-                // Safety: Allow send if the code crashes
-                event.completed({ allowEvent: true });
-            }
-        }
-
-        function getRecipientsAsync(recipientField) {
-            return new Promise((resolve) => {
-                recipientField.getAsync((result) => {
-                    resolve(result.status === Office.AsyncResultStatus.Succeeded ? result.value : []);
-                });
-            });
-        }
-
-        function showConfirmDialog(domainList) {
-            return new Promise((resolve) => {
-                const message = `Multiple external domains detected: ${domainList}. Send anyway?`;
-                const url = `https://byclevw.github.io/outlookaddin/dialog.html?message=${encodeURIComponent(message)}`;
-                
-                Office.context.ui.displayDialogAsync(url, { height: 30, width: 40 }, (result) => {
-                    if (result.status === Office.AsyncResultStatus.Succeeded) {
-                        const dialog = result.value;
-                        dialog.addEventHandler(Office.EventType.DialogMessageReceived, (arg) => {
-                            dialog.close();
-                            resolve(arg.message === "yes");
-                        });
-                        dialog.addEventHandler(Office.EventType.DialogEventReceived, () => {
-                            resolve(true); // User closed X, allow send by default
-                        });
-                    } else {
-                        resolve(true); // Dialog failed to open, don't block user
-                    }
-                });
-            });
-        }
-
-        function action(event) {
-            // This is called when the user clicks the "Add-in Status" button
-            const message = {
-                type: Office.MailboxEnums.ItemNotificationMessageType.InformationalMessage,
-                message: "External Domain Warning is active and checking your emails.",
-                icon: "Icon.80x80",
-                persistent: false
-            };
-            Office.context.mailbox.item.notificationMessages.replaceAsync("status", message);
+        // No risk → auto-confirm
+        if (externalDomains.size < 2) {
+          saveConfirmation(true, () => {
+            notifyInfo("No external domain risk detected.");
             event.completed();
-        }        
+          });
+          return;
+        }
 
-        // Mapping function names in manifest to JS functions
-        Office.actions.associate("checkRecipientsBeforeSend", checkRecipientsBeforeSend);
-        Office.actions.associate("action", action);
+        // Show dialog ONLY here (allowed)
+        showConfirmDialog(Array.from(externalDomains).join(", "))
+          .then(userConfirmed => {
+            saveConfirmation(userConfirmed, () => {
+              if (userConfirmed) {
+                notifyInfo("External domains confirmed. You may send the email.");
+              } else {
+                notifyInfo("Send cancelled. Please review recipients.");
+              }
+              event.completed();
+            });
+          });
 
-    </script>
+      }).catch(() => {
+        event.completed();
+      });
+    }
+
+    /* =========================================================
+       STEP 2 — ONSEND (AUTO-RUN, NON-INTERACTIVE)
+       ========================================================= */
+    function checkRecipientsBeforeSend(event) {
+      Office.context.mailbox.item.loadCustomPropertiesAsync(result => {
+        const props = result.value;
+        const confirmed = props.get(CONFIRM_KEY) === true;
+
+        // One-time confirmation — always reset
+        props.set(CONFIRM_KEY, false);
+        props.saveAsync();
+
+        if (confirmed) {
+          event.completed({ allowEvent: true });
+        } else {
+          autoCheckAndBlock(event);
+        }
+      });
+    }
+
+    /* =========================================================
+       AUTO CHECK + BLOCK (NO UI, OWA SAFE)
+       ========================================================= */
+    function autoCheckAndBlock(event) {
+      const item = Office.context.mailbox.item;
+      const domains = new Set();
+
+      Promise.all([
+        getRecipients(item.to),
+        getRecipients(item.cc),
+        getRecipients(item.bcc)
+      ]).then(results => {
+        results.flat().forEach(r => {
+          const domain = r.emailAddress?.split("@")[1];
+          if (domain && domain !== INTERNAL_DOMAIN) {
+            domains.add(domain);
+          }
+        });
+
+        if (domains.size >= 2) {
+          showBlockMessage();
+          event.completed({ allowEvent: false });
+        } else {
+          event.completed({ allowEvent: true });
+        }
+      }).catch(() => {
+        // Fail open for safety
+        event.completed({ allowEvent: true });
+      });
+    }
+
+    /* =========================================================
+       HELPERS
+       ========================================================= */
+    function getRecipients(field) {
+      return new Promise(resolve => {
+        if (!field) return resolve([]);
+        field.getAsync(r =>
+          resolve(
+            r.status === Office.AsyncResultStatus.Succeeded ? r.value : []
+          )
+        );
+      });
+    }
+
+    function saveConfirmation(value, callback) {
+      Office.context.mailbox.item.loadCustomPropertiesAsync(result => {
+        const props = result.value;
+        props.set(CONFIRM_KEY, value);
+        props.saveAsync(callback);
+      });
+    }
+
+    function showConfirmDialog(domainList) {
+      return new Promise(resolve => {
+        const url =
+          "https://byclevw.github.io/outlookaddin/dialog.html" +
+          "?domains=" + encodeURIComponent(domainList);
+
+        Office.context.ui.displayDialogAsync(
+          url,
+          { height: 35, width: 45 },
+          result => {
+            if (result.status !== Office.AsyncResultStatus.Succeeded) {
+              resolve(true);
+              return;
+            }
+
+            const dialog = result.value;
+            dialog.addEventHandler(
+              Office.EventType.DialogMessageReceived,
+              arg => {
+                dialog.close();
+                resolve(arg.message === "yes");
+              }
+            );
+            dialog.addEventHandler(
+              Office.EventType.DialogEventReceived,
+              () => resolve(true)
+            );
+          }
+        );
+      });
+    }
+
+    function showBlockMessage() {
+      Office.context.mailbox.item.notificationMessages.replaceAsync(
+        "externalBlock",
+        {
+          type: Office.MailboxEnums.ItemNotificationMessageType.ErrorMessage,
+          message:
+            "Multiple external domains detected. Click 'External Domain Check' to review before sending.",
+          persistent: false
+        }
+      );
+    }
+
+    function notifyInfo(message) {
+      Office.context.mailbox.item.notificationMessages.replaceAsync(
+        "externalInfo",
+        {
+          type: Office.MailboxEnums.ItemNotificationMessageType.InformationalMessage,
+          message,
+          persistent: false
+        }
+      );
+    }
+
+    /* =========================================================
+       MANIFEST FUNCTION MAPPINGS
+       ========================================================= */
+    Office.actions.associate("action", action);
+    Office.actions.associate(
+      "checkRecipientsBeforeSend",
+      checkRecipientsBeforeSend
+    );
+  </script>
 </head>
+
 <body>
-    <p>External Domain Warning Working...</p>
+  <p>External Domain Warning is active.</p>
 </body>
 </html>
